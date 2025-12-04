@@ -2,6 +2,7 @@
 export const STORAGE_KEY_API = 'seoul_fallout_key_v1';
 export const STORAGE_KEY_SETTINGS = 'seoul_fallout_settings_v1';
 export const STORAGE_KEY_LEGACY = 'seoul_fallout_legacy_v1';
+export const STORAGE_KEY_SAVES = 'seoul_fallout_saves_v1';
 
 export const SYSTEM_PROMPT = `
 ### [Role & Persona]

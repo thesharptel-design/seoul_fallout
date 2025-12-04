@@ -18,6 +18,15 @@ export interface ParsedResponse {
   hudRaw: string | null;
 }
 
+export interface SaveFile {
+  timestamp: number;
+  summary: string; // usually from notes or last message
+  messages: Message[];
+  gameState: Partial<GameState>;
+  phase: any; // GamePhase
+  selectedPerk: string | null;
+}
+
 export enum GameStatus {
   IDLE,
   INITIALIZING,

@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { GeminiService } from '../services/geminiService';
-import { GameState, Message } from '../types';
+import { GameState, Message, SaveFile } from '../types';
 import { parseGameResponse, parseHudToState } from '../utils/parser';
-import { STORAGE_KEY_SETTINGS, STORAGE_KEY_LEGACY } from '../constants';
+import { STORAGE_KEY_SETTINGS, STORAGE_KEY_LEGACY, STORAGE_KEY_SAVES } from '../constants';
 
 interface GameInterfaceProps {
   apiKey: string;
@@ -64,10 +64,15 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
     fontSize: 'text-lg'
   });
 
+  // Save/Load System State
+  const [isSystemMenuOpen, setIsSystemMenuOpen] = useState(false);
+  const [saveSlots, setSaveSlots] = useState<(SaveFile | null)[]>(new Array(5).fill(null));
+
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Load Settings and Legacy Perks
+  // Load Settings, Legacy Perks, and Save Slots
   useEffect(() => {
+    // Settings
     const savedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
     if (savedSettings) {
         try {
@@ -78,6 +83,7 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
         }
     }
 
+    // Perks
     const savedPerks = localStorage.getItem(STORAGE_KEY_LEGACY);
     if (savedPerks) {
         try {
@@ -87,6 +93,19 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
             }
         } catch (e) {
             console.error("Failed to load legacy perks", e);
+        }
+    }
+
+    // Save Slots
+    const storedSaves = localStorage.getItem(STORAGE_KEY_SAVES);
+    if (storedSaves) {
+        try {
+            const parsed = JSON.parse(storedSaves);
+            if (Array.isArray(parsed)) {
+                setSaveSlots(parsed);
+            }
+        } catch (e) {
+            console.error("Failed to load save slots", e);
         }
     }
   }, []);
@@ -246,6 +265,56 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
     }
   };
 
+  // --- SAVE / LOAD HANDLERS ---
+  
+  const handleSave = (index: number) => {
+      const newSave: SaveFile = {
+          timestamp: Date.now(),
+          summary: gameState.notes || `Scenario #${messages.length}`,
+          messages: messages,
+          gameState: gameState,
+          phase: phase,
+          selectedPerk: selectedPerk
+      };
+      
+      const newSlots = [...saveSlots];
+      newSlots[index] = newSave;
+      setSaveSlots(newSlots);
+      localStorage.setItem(STORAGE_KEY_SAVES, JSON.stringify(newSlots));
+      setFlashMsg(`[SYSTEM] DATA SAVED TO SLOT ${index + 1}`);
+      setTimeout(() => setFlashMsg(null), 2000);
+  };
+
+  const handleLoad = async (index: number) => {
+      const save = saveSlots[index];
+      if (!save || !gemini) return;
+
+      setIsSystemMenuOpen(false);
+      setPhase(save.phase);
+      setMessages(save.messages);
+      setGameState(save.gameState);
+      setSelectedPerk(save.selectedPerk);
+      
+      // Resume AI Session
+      try {
+          await gemini.resumeGame(save.messages);
+          setFlashMsg(`[SYSTEM] SIMULATION RESTORED FROM SLOT ${index + 1}`);
+      } catch (e) {
+          console.error("Failed to resume game:", e);
+          setFlashMsg(`[ERROR] FAILED TO RESTORE SESSION`);
+      }
+      setTimeout(() => setFlashMsg(null), 2000);
+  };
+
+  const handleDeleteSave = (index: number, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const newSlots = [...saveSlots];
+      newSlots[index] = null;
+      setSaveSlots(newSlots);
+      localStorage.setItem(STORAGE_KEY_SAVES, JSON.stringify(newSlots));
+  };
+
+
   // Helper for Tag Descriptions (Initial Sync Info)
   const getTagDescription = (tagRaw: string): {name: string, desc: string} => {
       const tag = tagRaw.replace(/[\[\]]/g, ''); // remove brackets
@@ -269,6 +338,10 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
         '화학': '폭발물 제조, 독극물 판별, 마약류 정제 등에 사용되는 지식입니다.',
         '은신': '적의 시야에서 벗어나 조용히 이동하는 능력입니다. 기습이나 회피에 유리합니다.',
         '탐색': '숨겨진 아이템이나 길을 찾는 능력입니다. 물자 부족 상황에서 빛을 발합니다.',
+        // Add more common status tags
+        '부상': '신체에 데미지를 입은 상태입니다. 피지컬 판정에 불리하며 지속되면 감염 위험이 있습니다.',
+        '배고픔': '영양 섭취가 필요한 상태입니다. 장기간 지속 시 스탯이 하락합니다.',
+        '방사능': '피폭 상태입니다. 서서히 최대 체력이 감소하며 돌연변이를 유발할 수 있습니다.',
       };
       
       if (TAG_DICT[tag]) {
@@ -396,6 +469,13 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
                             Apply Perks from previous survival records.
                         </div>
                     </button>
+
+                    <button 
+                        onClick={() => setIsSystemMenuOpen(true)}
+                        className={`w-full p-4 text-center border font-mono text-xs tracking-widest uppercase hover:bg-opacity-10 transition-all ${borderColor} ${accentColor}`}
+                    >
+                        [ LOAD SAVE DATA ]
+                    </button>
                 </div>
                 
                 <button 
@@ -405,6 +485,46 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
                     [ RETURN TO TITLE ]
                 </button>
             </div>
+             {/* Load Modal only for this screen (simplified) */}
+             {isSystemMenuOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm" onClick={() => setIsSystemMenuOpen(false)}>
+                    <div className={`max-w-md w-full p-6 border shadow-2xl ${isRetro ? 'bg-[#1a1000] border-[#ffb000]' : 'bg-gray-900 border-green-500'}`} onClick={e => e.stopPropagation()}>
+                        <h3 className={`text-xl font-mono mb-4 border-b pb-2 ${accentColor}`}>LOAD MEMORY</h3>
+                         <div className="space-y-2">
+                            {saveSlots.map((slot, i) => (
+                                <div key={i} className={`p-3 border flex justify-between items-center ${
+                                    slot 
+                                    ? (isRetro ? 'border-[#553b00] bg-[#221500]' : 'border-gray-700 bg-gray-800')
+                                    : 'border-dashed border-gray-800 opacity-50'
+                                }`}>
+                                    {slot ? (
+                                        <>
+                                            <div className="flex-1 overflow-hidden">
+                                                <div className={`text-xs font-bold ${accentColor}`}>
+                                                    {new Date(slot.timestamp).toLocaleString()}
+                                                </div>
+                                                <div className="text-[10px] opacity-70 truncate">
+                                                    {slot.summary}
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleLoad(i)}
+                                                className={`px-3 py-1 text-xs font-bold border ${
+                                                    isRetro ? 'border-[#ffb000] text-[#ffb000]' : 'border-green-500 text-green-500'
+                                                } hover:bg-current hover:bg-opacity-10`}
+                                            >
+                                                LOAD
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <div className="text-xs font-mono text-center w-full py-2">EMPTY SLOT</div>
+                                    )}
+                                </div>
+                            ))}
+                         </div>
+                    </div>
+                </div>
+            )}
         </div>
       );
   }
@@ -579,6 +699,88 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
         </div>
       )}
 
+      {/* SYSTEM MENU MODAL (SAVE/LOAD) */}
+      {isSystemMenuOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm" onClick={() => setIsSystemMenuOpen(false)}>
+              <div 
+                  className={`max-w-md w-full p-6 border shadow-2xl relative ${isRetro ? 'bg-[#1a1000] border-[#ffb000] text-[#ffb000]' : 'bg-gray-900 border-green-500 text-gray-200'}`}
+                  onClick={e => e.stopPropagation()}
+              >
+                  <h3 className={`text-xl font-bold font-mono mb-4 border-b pb-2 flex justify-between ${isRetro ? 'border-[#553b00]' : 'border-green-800'}`}>
+                      <span>SYSTEM MEMORY</span>
+                      <span className="text-xs opacity-50 animate-pulse">READY</span>
+                  </h3>
+                  
+                  <div className="space-y-3 mb-6">
+                    {saveSlots.map((slot, i) => (
+                        <div key={i} className={`p-3 border flex flex-col gap-2 ${
+                            slot 
+                            ? (isRetro ? 'border-[#553b00] bg-[#221500]' : 'border-gray-700 bg-gray-800')
+                            : 'border-dashed border-gray-800 opacity-50 hover:opacity-80 transition-opacity'
+                        }`}>
+                            <div className="flex justify-between items-start">
+                                <div className="text-xs font-mono uppercase tracking-widest opacity-50">Slot {i + 1}</div>
+                                {slot && (
+                                    <div className={`text-[10px] font-bold ${isRetro ? 'text-[#ffb000]' : 'text-green-400'}`}>
+                                        {new Date(slot.timestamp).toLocaleString()}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {slot ? (
+                                <div className="text-xs opacity-80 font-sans truncate py-1">
+                                    {slot.summary}
+                                </div>
+                            ) : (
+                                <div className="text-xs text-center py-2 italic opacity-30">Empty Data Block</div>
+                            )}
+
+                            <div className="flex gap-2 mt-1">
+                                <button 
+                                    onClick={() => handleSave(i)}
+                                    className={`flex-1 py-1 text-[10px] font-bold border uppercase transition-colors ${
+                                        isRetro 
+                                        ? 'border-[#ffb000] hover:bg-[#ffb000] hover:text-black' 
+                                        : 'border-green-600 hover:bg-green-600 hover:text-black'
+                                    }`}
+                                >
+                                    SAVE
+                                </button>
+                                {slot && (
+                                    <>
+                                        <button 
+                                            onClick={() => handleLoad(i)}
+                                            className={`flex-1 py-1 text-[10px] font-bold border uppercase transition-colors ${
+                                                isRetro 
+                                                ? 'border-[#ffb000] hover:bg-[#ffb000] hover:text-black' 
+                                                : 'border-blue-500 text-blue-400 hover:bg-blue-500 hover:text-black'
+                                            }`}
+                                        >
+                                            LOAD
+                                        </button>
+                                        <button 
+                                            onClick={(e) => handleDeleteSave(i, e)}
+                                            className="px-2 py-1 text-[10px] font-bold border border-red-900 text-red-700 hover:bg-red-900 hover:text-white uppercase transition-colors"
+                                        >
+                                            DEL
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                  </div>
+
+                  <button 
+                    onClick={() => setIsSystemMenuOpen(false)}
+                    className={`w-full py-3 text-xs font-bold border uppercase tracking-wider hover:bg-current hover:bg-opacity-10 ${isRetro ? 'border-[#ffb000]' : 'border-green-600'}`}
+                  >
+                      Close System
+                  </button>
+              </div>
+          </div>
+      )}
+
       {/* TAG INSPECTION MODAL */}
       {inspectedTag && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setInspectedTag(null)}>
@@ -681,6 +883,18 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
                     {gameState.notes || 'No critical updates.'}
                  </div>
             </div>
+
+            {/* System Menu Button */}
+            <button
+                onClick={() => setIsSystemMenuOpen(true)}
+                className={`w-full py-3 mt-4 mb-2 font-bold text-xs uppercase tracking-widest border transition-all ${
+                    isRetro
+                    ? 'border-[#ffb000] text-[#ffb000] hover:bg-[#ffb000] hover:text-black'
+                    : 'border-green-600 text-green-500 hover:bg-green-600 hover:text-black'
+                }`}
+            >
+                [ SYSTEM MENU ]
+            </button>
 
             {/* Visual Settings */}
             <div className={`pt-4 border-t ${isRetro ? 'border-[#332200]' : 'border-gray-800'}`}>

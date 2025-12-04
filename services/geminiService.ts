@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { Chat } from "@google/genai";
 import { SYSTEM_PROMPT } from "../constants";
+import { Message } from "../types";
 
 export class GeminiService {
   private ai: GoogleGenAI;
@@ -98,12 +99,35 @@ ${perkInstructions}
         const response = await this.ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: `Context: "Project: Seoul Fallout" (Text Adventure RPG, Post-apocalyptic Seoul 2045).
-Question: Briefly explain the status/tag '${tagName}' in 1-2 sentences. Focus on its gameplay effect or narrative flavor.`,
+Question: Briefly explain the status/tag '${tagName}' in 1-2 sentences. Focus on its gameplay effect or narrative flavor. Answer in Korean.`,
         });
         return response.text || "";
     } catch (error) {
         console.error("Failed to get tag explanation:", error);
         return "";
     }
+  }
+
+  /**
+   * Resumes a game session with existing message history.
+   * Filters out system messages and maps to SDK format.
+   */
+  async resumeGame(history: Message[]): Promise<void> {
+    // Convert App messages to SDK Content format
+    const sdkHistory = history
+      .filter(m => m.role === 'user' || m.role === 'model')
+      .map(m => ({
+        role: m.role,
+        parts: [{ text: m.content }],
+      }));
+
+    // Create a new chat session with history
+    this.chat = this.ai.chats.create({
+      model: "gemini-2.5-flash",
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+      },
+      history: sdkHistory,
+    });
   }
 }
