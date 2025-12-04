@@ -1,3 +1,4 @@
+
 export const STORAGE_KEY_API = 'seoul_fallout_key_v1';
 export const STORAGE_KEY_SETTINGS = 'seoul_fallout_settings_v1';
 export const STORAGE_KEY_LEGACY = 'seoul_fallout_legacy_v1';
@@ -35,9 +36,10 @@ export const SYSTEM_PROMPT = `
 
 1. 상황 묘사: 시각, 청각, 후각을 자극하는 그로테스크한 어둡고 디테일한 묘사.(**자극적인 표현 권장**.)
 2. 선택지 제공: (태그를 명시하지 않는 직관적 스타일)
+   * **주의:** 선택지 내용이나 번호에 **볼드체(**)** 마크다운을 절대 사용하지 마십시오.
    1. [행동 요약] 행동 서술 (플레이어의 장비/특성과 연관된 힌트 포함)
    2. [행동 요약] ...
-   3. [자유 행동] "직접 서술하시오", 항상 선택지의 마지막 번호를 부여한다.
+   0. [자유 행동] "직접 서술하시오", 항상 선택지의 마지막 번호(0번)를 부여한다.
 3. 상태창 (HUD) **[매 턴 필수 출력]****
    *   반드시 \`Code Block\`을 사용하되, **테두리나 줄바꿈 없이 텍스트로만** 간결하게 구성하십시오. (모바일 가독성 최적화)
    *   형식:

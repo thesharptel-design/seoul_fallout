@@ -74,7 +74,17 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onKeySet, savedKey }) => {
         </p>
 
         <div className="mb-4">
-          <label className="block text-xs text-green-700 mb-1 font-mono uppercase">Enter API Key</label>
+          <div className="flex justify-between items-end mb-1">
+            <label className="block text-xs text-green-700 font-mono uppercase">Enter API Key</label>
+            <a 
+                href="https://aistudio.google.com/app/apikey" 
+                target="_blank" 
+                rel="noreferrer"
+                className="text-[10px] text-gray-500 hover:text-green-400 underline font-sans transition-colors cursor-pointer"
+            >
+                API Key 발급받기 (무료)
+            </a>
+          </div>
           <input 
             type="password"
             value={inputKey}
@@ -96,15 +106,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onKeySet, savedKey }) => {
           </div>
         )}
 
-        <div className="flex justify-end gap-3">
-            <a 
-                href="https://aistudio.google.com/app/apikey" 
-                target="_blank" 
-                rel="noreferrer"
-                className="px-4 py-2 text-xs text-gray-500 hover:text-gray-300 font-mono flex items-center"
-            >
-                Get Key
-            </a>
+        <div className="flex justify-end">
             <button
                 onClick={handleTestAndSave}
                 disabled={status === 'testing' || status === 'success'}

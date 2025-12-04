@@ -92,4 +92,18 @@ ${perkInstructions}
         throw error;
     }
   }
+
+  async getTagExplanation(tagName: string): Promise<string> {
+    try {
+        const response = await this.ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Context: "Project: Seoul Fallout" (Text Adventure RPG, Post-apocalyptic Seoul 2045).
+Question: Briefly explain the status/tag '${tagName}' in 1-2 sentences. Focus on its gameplay effect or narrative flavor.`,
+        });
+        return response.text || "";
+    } catch (error) {
+        console.error("Failed to get tag explanation:", error);
+        return "";
+    }
+  }
 }

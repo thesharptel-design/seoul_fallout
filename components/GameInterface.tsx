@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GeminiService } from '../services/geminiService';
 import { GameState, Message } from '../types';
@@ -14,7 +15,7 @@ interface VisualSettings {
   fontSize: 'text-sm' | 'text-base' | 'text-lg' | 'text-xl';
 }
 
-type GamePhase = 'intro' | 'selection' | 'perk-selection' | 'job-selection' | 'playing';
+type GamePhase = 'intro' | 'selection' | 'perk-selection' | 'job-selection' | 'prologue' | 'playing';
 
 interface JobOption {
   id: string;
@@ -30,6 +31,14 @@ const JOBS: JobOption[] = [
   { id: 'Scavenger', name: '스캐빈저 (SCAVENGER)', desc: '은신과 탐색에 특화된 생존 전문가.', tags: ['[은신]', '[탐색]'] },
 ];
 
+// Prologue Text Lines
+const PROLOGUE_LINES = [
+    "2045년, 서울.",
+    "핵전쟁의 화염이 모든 것을 집어삼킨 지 20년...",
+    "질서는 무너졌고, 오직 생존만이 유일한 법이 되었다.",
+    "당신의 이야기가... 지금 시작된다."
+];
+
 const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
   // Game Logic State
   const [phase, setPhase] = useState<GamePhase>('intro');
@@ -43,8 +52,12 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
   const [gemini, setGemini] = useState<GeminiService | null>(null);
   const [flashMsg, setFlashMsg] = useState<string | null>(null);
   
+  // Prologue State
+  const [prologueStep, setPrologueStep] = useState(0);
+
   // UI State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [inspectedTag, setInspectedTag] = useState<{name: string, desc: string} | null>(null);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>({
     fontStyle: 'style-digital',
     fontFamily: 'font-sans',
@@ -84,6 +97,22 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
     setGemini(service);
   }, [apiKey]);
 
+  // Prologue Animation Effect
+  useEffect(() => {
+    if (phase === 'prologue') {
+        const timer = setInterval(() => {
+            setPrologueStep(prev => {
+                if (prev < PROLOGUE_LINES.length) return prev + 1;
+                clearInterval(timer);
+                return prev;
+            });
+        }, 1500); // New line every 1.5s
+        return () => clearInterval(timer);
+    } else {
+        setPrologueStep(0);
+    }
+  }, [phase]);
+
   // Save Settings
   const updateSettings = (newSettings: Partial<VisualSettings>) => {
       const updated = { ...visualSettings, ...newSettings };
@@ -93,8 +122,10 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
 
   // Scroll to bottom
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+    if (phase === 'playing') {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isLoading, phase]);
 
   // --- Handlers ---
 
@@ -119,11 +150,17 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
 
   const handleJobSelect = async (jobName: string) => {
       if (!gemini) return;
-      setPhase('playing');
+      
+      // Start Prologue instead of going straight to playing
+      setPhase('prologue');
+      setPrologueStep(0);
       setIsLoading(true);
+
       try {
           // Pass the selected job and the specific perk string
           const response = await gemini.startGame(jobName, selectedPerk);
+          
+          // We process the response but wait for user to click "Start" in prologue
           handleModelResponse(response);
       } catch (e) {
           console.error(e);
@@ -131,6 +168,27 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
       } finally {
           setIsLoading(false);
       }
+  };
+
+  const handleTagClick = async (tagRaw: string) => {
+    // 1. Open modal immediately with loading state
+    const basicInfo = getTagDescription(tagRaw); 
+    setInspectedTag({
+        name: basicInfo.name,
+        desc: "데이터베이스 암호 해독 중... [ACCESSING GM NODE]"
+    });
+
+    if (!gemini) return;
+
+    try {
+        const explanation = await gemini.getTagExplanation(basicInfo.name);
+        if (explanation) {
+             setInspectedTag(prev => prev ? { ...prev, desc: explanation } : null);
+        }
+    } catch (e) {
+        // Fallback to basic info if API fails
+        setInspectedTag(prev => prev ? { ...prev, desc: basicInfo.desc } : null);
+    }
   };
 
   const handleModelResponse = (text: string) => {
@@ -186,6 +244,38 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
     } finally {
         setIsLoading(false);
     }
+  };
+
+  // Helper for Tag Descriptions (Initial Sync Info)
+  const getTagDescription = (tagRaw: string): {name: string, desc: string} => {
+      const tag = tagRaw.replace(/[\[\]]/g, ''); // remove brackets
+      const cleanPerkName = selectedPerk ? selectedPerk.replace(/[\[\]]/g, '') : '';
+      
+      // 1. Check if it's the selected perk
+      if (selectedPerk && (tag.includes(cleanPerkName) || cleanPerkName.includes(tag))) {
+          return { 
+              name: `[LEGACY] ${tagRaw}`, 
+              desc: `[계승된 기억: ${tag}]\n\n이전 회차의 생존 기록에서 계승된 고유 능력입니다.` 
+          };
+      }
+
+      // 2. Local fallback dictionary
+      const TAG_DICT: Record<string, string> = {
+        '전투': '근접 및 각종 전투 상황에서의 대처 능력입니다. 위기 상황에서 생존 확률이 대폭 상승합니다.',
+        '화기': '총기류 및 화약 무기를 전문적으로 다루는 능력입니다. 명중률 보정 및 재장전 속도가 빠릅니다.',
+        '공학': '기계 장치, 전자 도어락, 드론 등을 조작하거나 수리하는 기술입니다.',
+        '해킹': '구시대의 보안 시스템을 뚫고 정보를 얻거나 포탑 등을 무력화하는 능력입니다.',
+        '의학': '응급 처치, 수술, 약물 혼합 등 생명과 직결된 의료 지식입니다.',
+        '화학': '폭발물 제조, 독극물 판별, 마약류 정제 등에 사용되는 지식입니다.',
+        '은신': '적의 시야에서 벗어나 조용히 이동하는 능력입니다. 기습이나 회피에 유리합니다.',
+        '탐색': '숨겨진 아이템이나 길을 찾는 능력입니다. 물자 부족 상황에서 빛을 발합니다.',
+      };
+      
+      if (TAG_DICT[tag]) {
+          return { name: tagRaw, desc: `[능력 분석: ${tag}]\n\n${TAG_DICT[tag]}` };
+      }
+
+      return { name: tagRaw, desc: `[상태 분석: ${tag}]\n\n현재 시뮬레이션 환경 또는 플레이어의 신체/정신 상태에 영향을 미치는 활성 변수입니다.` };
   };
 
   // --- Styles ---
@@ -417,7 +507,46 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
       );
   }
 
-  // 5. Playing Phase (Main Game UI)
+  // 5. PROLOGUE SCREEN (Cinematic)
+  if (phase === 'prologue') {
+      return (
+        <div className="h-screen w-full bg-black flex flex-col items-center justify-center p-8 relative z-50 overflow-hidden cursor-wait">
+             <div className="max-w-3xl w-full text-center space-y-8 font-serif">
+                {PROLOGUE_LINES.map((line, idx) => (
+                    <div 
+                        key={idx}
+                        className={`text-xl md:text-3xl transition-opacity duration-1000 ${
+                            prologueStep > idx ? 'opacity-100' : 'opacity-0'
+                        } ${idx === PROLOGUE_LINES.length - 1 ? 'text-red-600 font-bold' : 'text-gray-300'}`}
+                    >
+                        {line}
+                    </div>
+                ))}
+             </div>
+
+             {/* Show Loading or Start Button */}
+             <div className="absolute bottom-20 text-center transition-opacity duration-500" style={{ opacity: prologueStep >= PROLOGUE_LINES.length ? 1 : 0 }}>
+                 {isLoading ? (
+                     <div className="flex flex-col items-center gap-2">
+                         <div className="w-16 h-1 bg-gray-800 rounded overflow-hidden">
+                             <div className="h-full bg-red-600 animate-[width_2s_infinite]"></div>
+                         </div>
+                         <span className="text-xs font-mono text-red-500 tracking-widest animate-pulse">GENERATING WORLD STATE...</span>
+                     </div>
+                 ) : (
+                     <button
+                        onClick={() => setPhase('playing')}
+                        className="px-8 py-3 border-2 border-red-600 text-red-500 font-mono text-lg tracking-[0.2em] hover:bg-red-900/20 hover:text-red-400 transition-all animate-pulse"
+                     >
+                         [ SIMULATION START ]
+                     </button>
+                 )}
+             </div>
+        </div>
+      );
+  }
+
+  // 6. Playing Phase (Main Game UI)
   return (
     <div className={`flex flex-col md:flex-row h-screen w-full overflow-hidden relative transition-colors duration-300 ${getContainerClasses()}`}>
       
@@ -449,6 +578,30 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
             {flashMsg}
         </div>
       )}
+
+      {/* TAG INSPECTION MODAL */}
+      {inspectedTag && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setInspectedTag(null)}>
+              <div 
+                  className={`max-w-sm w-full p-6 border shadow-2xl relative ${isRetro ? 'bg-[#1a1000] border-[#ffb000] text-[#ffb000]' : 'bg-gray-900 border-green-500 text-gray-200'}`}
+                  onClick={e => e.stopPropagation()}
+              >
+                  <h3 className={`text-xl font-bold font-mono mb-2 ${isRetro ? 'text-[#ffb000]' : 'text-green-400'}`}>
+                      {inspectedTag.name}
+                  </h3>
+                  <div className="h-px w-full bg-current opacity-30 mb-4"></div>
+                  <p className="font-mono text-sm opacity-90 leading-relaxed whitespace-pre-wrap">
+                      {inspectedTag.desc}
+                  </p>
+                  <button 
+                    onClick={() => setInspectedTag(null)}
+                    className={`mt-6 w-full py-2 text-xs font-bold border uppercase tracking-wider hover:bg-current hover:bg-opacity-10 ${isRetro ? 'border-[#ffb000]' : 'border-green-600'}`}
+                  >
+                      Close Data
+                  </button>
+              </div>
+          </div>
+      )}
       
       {/* SIDEBAR (HUD) */}
       <div className={`
@@ -472,15 +625,15 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
         </h1>
 
         <div className="flex-1 space-y-6 font-mono text-sm flex flex-col">
-            {/* HP / Mental */}
+            {/* HP / Mental Group - Vertical Stack (2 Lines) */}
             <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                    <span className="opacity-60">HP</span>
-                    <span className={`font-bold ${isRetro ? '' : 'text-red-400'}`}>{gameState.hp || '---'}</span>
+                <div className={`px-3 py-2 border rounded flex justify-between items-center ${isRetro ? 'bg-[#221500] border-[#442b00]' : 'bg-gray-900 border-gray-800'}`}>
+                     <span className={`text-[10px] font-bold opacity-70 ${isRetro ? 'text-[#ffb000]' : 'text-red-500'}`}>HP</span>
+                     <span className={`font-mono text-sm font-bold ${isRetro ? '' : 'text-red-400'}`}>{gameState.hp || '---'}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                    <span className="opacity-60">MENTAL</span>
-                    <span className={`font-bold ${isRetro ? '' : 'text-blue-400'}`}>{gameState.mental || '---'}</span>
+                <div className={`px-3 py-2 border rounded flex justify-between items-center ${isRetro ? 'bg-[#221500] border-[#442b00]' : 'bg-gray-900 border-gray-800'}`}>
+                     <span className={`text-[10px] font-bold opacity-70 ${isRetro ? 'text-[#ffb000]' : 'text-blue-500'}`}>MENTAL</span>
+                     <span className={`font-mono text-sm font-bold ${isRetro ? '' : 'text-blue-400'}`}>{gameState.mental || '---'}</span>
                 </div>
             </div>
 
@@ -496,13 +649,16 @@ const GameInterface: React.FC<GameInterfaceProps> = ({ apiKey }) => {
                 <div className="flex flex-wrap gap-2">
                     {gameState.tags && gameState.tags.length > 0 ? (
                         gameState.tags.map((tag, i) => (
-                            <span key={i} className={`px-2 py-1 border text-xs rounded-sm ${
+                            <button 
+                                key={i} 
+                                onClick={() => handleTagClick(tag)}
+                                className={`px-2 py-1 border text-xs rounded-sm transition-all hover:brightness-125 hover:shadow-[0_0_8px_currentColor] ${
                                 isRetro 
                                 ? 'bg-[#332200] border-[#553b00] text-[#ffb000]' 
                                 : 'bg-green-900/20 border-green-800 text-green-400'
                             }`}>
                                 {tag}
-                            </span>
+                            </button>
                         ))
                     ) : (
                         <span className="opacity-50 italic">None</span>

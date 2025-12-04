@@ -1,3 +1,4 @@
+
 import { ParsedResponse, GameState } from "../types";
 
 export const parseGameResponse = (text: string): ParsedResponse => {
@@ -16,16 +17,17 @@ export const parseGameResponse = (text: string): ParsedResponse => {
     narrative = text.replace(match[0], '').trim();
   }
 
-  // 2. Extract Choices (Simple heuristic based on "1. ", "2. ")
+  // 2. Extract Choices (Simple heuristic based on "1. ", "2. ", "0. ")
   // This is for creating clickable buttons.
   const choiceRegex = /^(\d+)\.\s+(.*)$/gm;
   const choices: string[] = [];
   let choiceMatch;
   while ((choiceMatch = choiceRegex.exec(narrative)) !== null) {
     // We don't remove choices from narrative, just extract for buttons
-    // Actually, we keep them in text for context, but adding buttons is nice.
     if (choiceMatch[1] !== '0') { // 0 is usually free action
-        choices.push(choiceMatch[0]);
+        // Clean up markdown bolding (**) if the AI adds it despite instructions
+        const cleanChoice = choiceMatch[0].replace(/\*\*/g, '');
+        choices.push(cleanChoice);
     }
   }
 
@@ -42,7 +44,21 @@ export const parseHudToState = (hudText: string): Partial<GameState> => {
   const lines = hudText.split('\n');
   lines.forEach(line => {
     if (line.includes('[상태]')) {
-        state.hp = line.replace('[상태]', '').trim();
+        const content = line.replace('[상태]', '').trim();
+        // Format: "HP: ... | 멘탈: ..."
+        if (content.includes('|')) {
+            const parts = content.split('|').map(p => p.trim());
+            parts.forEach(part => {
+                if (part.toUpperCase().startsWith('HP:')) {
+                    state.hp = part.replace(/HP:/i, '').trim();
+                } else if (part.startsWith('멘탈:')) {
+                    state.mental = part.replace('멘탈:', '').trim();
+                }
+            });
+        } else {
+            // Fallback if separator missing
+            state.hp = content;
+        }
     }
     if (line.includes('[스탯]')) {
         state.stats = line.replace('[스탯]', '').trim();
