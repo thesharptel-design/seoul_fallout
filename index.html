@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project: SEOUL FALLOUT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@300;400;700&family=Noto+Serif+KR:wght@300;400;700&display=swap');
+      
+      body {
+        background-color: #050505;
+        color: #e5e5e5;
+        font-family: 'Noto Sans KR', sans-serif;
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .font-serif {
+        font-family: 'Noto Serif KR', serif;
+      }
+      
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1a1a1a; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #333; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555; 
+      }
+
+      /* CRT Scanline Effect */
+      .crt-overlay {
+        background: linear-gradient(
+          rgba(18, 16, 16, 0) 50%,
+          rgba(0, 0, 0, 0.25) 50%
+        ), linear-gradient(
+          90deg,
+          rgba(255, 0, 0, 0.06),
+          rgba(0, 255, 0, 0.02),
+          rgba(0, 0, 255, 0.06)
+        );
+        background-size: 100% 2px, 3px 100%;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      /* Retro Theme Overrides */
+      .theme-retro {
+        --tw-text-opacity: 1;
+        color: rgba(255, 176, 0, var(--tw-text-opacity));
+      }
+      .theme-retro ::-webkit-scrollbar-thumb {
+        background: #553b00;
+      }
+      .theme-retro input, .theme-retro button {
+        border-color: #553b00 !important;
+        color: #ffb000 !important;
+      }
+      .theme-retro .prose strong {
+        color: #ffcc00 !important;
+      }
+      .theme-retro .prose h1, .theme-retro .prose h2, .theme-retro .prose h3 {
+        color: #ffb000 !important;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
